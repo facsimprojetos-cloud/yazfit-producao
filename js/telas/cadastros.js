@@ -25,12 +25,12 @@ let aba = 'produtos';
 let mostrarInativos = false;
 
 export async function render(el) {
-  const t = TABELAS[aba], admin = tem('admin');
+  const t = TABELAS[aba], admin = tem('cadastros');
   let q = db.from(aba).select('*').order(t.ordem);
   if (!mostrarInativos) q = q.eq('ativo', true);
   const lista = await ler(q);
   el.innerHTML = `
-    <div class="cab"><div><h1>Cadastros</h1><p>${admin ? 'Somente administradores podem alterar.' : 'Consulta.'}</p></div>
+    <div class="cab"><div><h1>Cadastros</h1><p>${admin ? 'Você pode incluir e alterar cadastros.' : 'Consulta (sem permissão de edição).'}</p></div>
       ${admin ? `<button class="btn acento" id="novo">+ Novo</button>` : ''}</div>
     <div class="abas">${Object.entries(TABELAS).map(([k, v]) => `<button data-a="${k}" class="${aba === k ? 'ativo' : ''}">${v.nome}</button>`).join('')}</div>
     <label class="peq"><input type="checkbox" id="inat" ${mostrarInativos ? 'checked' : ''}> mostrar inativos</label>

@@ -15,7 +15,7 @@ Substitui o app AppSheet "PRODUÇÃO - YAZFITWEAR" e os web apps de Corte, Roman
 | Romaneios | Reimpressão e troca de facção (antes de qualquer retorno) | faccao |
 | Consertos | Peças devolvidas para conserto | faccao |
 | Fechamento Facção | Pagamento dos retornos conferidos, com desconto rateado | financeiro |
-| Cadastros | Produtos, facções, cores, tamanhos, operadores | admin edita |
+| Cadastros | Produtos, facções, cores, tamanhos, operadores | cadastros (admin) edita |
 | Usuários | Libera contas e define perfis | admin |
 
 ## Primeiro acesso
