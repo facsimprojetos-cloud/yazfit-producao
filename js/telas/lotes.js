@@ -12,7 +12,6 @@ export async function render(el) {
   let q = db.from('v_sublotes').select('*').order('criado_em', { ascending: false }).order('codigo').limit(500);
   if (aba === 'separar') q = q.eq('disponivel_envio', true);
   if (aba === 'calandra') q = q.in('status_calandra', ['Aguardando Calandra', 'Em Calandra']);
-  if (aba === 'separados') q = q.eq('qtd_saldo', 0);
   const lista = await ler(q);
   const pode = tem('faccao');
   const filtrada = lista.filter(s => !busca || [s.codigo, s.lote, s.produto, s.cor, s.tamanho].join(' ').toLowerCase().includes(busca.toLowerCase()));
@@ -28,7 +27,6 @@ export async function render(el) {
     <div class="abas">
       <button data-a="separar" class="${aba === 'separar' ? 'ativo' : ''}">Aguardando separação</button>
       <button data-a="calandra" class="${aba === 'calandra' ? 'ativo' : ''}">Na calandra</button>
-      <button data-a="separados" class="${aba === 'separados' ? 'ativo' : ''}">Separados</button>
     </div>
     <div class="filtros"><label class="campo">Buscar<input id="busca" value="${h(busca)}" placeholder="Lote, produto, cor…"></label></div>
     <div class="tabela-wrap"><table>

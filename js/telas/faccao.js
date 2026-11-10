@@ -2,7 +2,12 @@ import { db, tem } from '../app.js';
 import { h, num, moeda, data, chip, modal, chamar, ler, cadastros, opcoes, toast, hojeISO, confirmar } from '../util.js';
 
 let aba = 'aberto';
-let fFac = '', fAtraso = '', busca = '';
+let fFac = '', fAtraso = '', busca = '', fProd = '', fCor = '', fTam = '';
+
+// Lista de valores distintos (ordenados) para os filtros
+const distintos = (lista, k) => [...new Set(lista.map(x => x[k]).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), 'pt-BR', { numeric: true }));
+const sel = (id, rotulo, valores, atual) => `<label class="campo">${rotulo}<select id="${id}"><option value="">Todos</option>
+  ${valores.map(v => `<option ${v === atual ? 'selected' : ''}>${h(v)}</option>`).join('')}</select></label>`;
 
 export async function render(el) {
   const pode = tem('faccao');
@@ -16,7 +21,10 @@ export async function render(el) {
     lista = await ler(q);
   }
   const filtrada = lista.filter(x => (!fFac || String(x.faccao_id) === fFac) && (!fAtraso || x.atraso === fAtraso)
+    && (!fProd || x.produto === fProd) && (!fCor || x.cor === fCor) && (!fTam || x.tamanho === fTam)
     && (!busca || [x.lote, x.sublote, x.produto, x.cor, x.faccao].join(' ').toLowerCase().includes(busca.toLowerCase())));
+  // opções de cor/tamanho seguem o produto escolhido
+  const baseOpcoes = lista.filter(x => !fProd || x.produto === fProd);
 
   el.innerHTML = `
     <div class="cab"><div><h1>Gestão de Facção</h1><p>Acompanhe o que está nas facções, registre retornos e confira.</p></div></div>
@@ -29,9 +37,18 @@ export async function render(el) {
       <label class="campo">Facção<select id="ff">${opcoes(cad.faccoes, fFac, 'nome', 'id', 'Todas')}</select></label>
       ${aba !== 'conferir' ? `<label class="campo">Prazo<select id="fa"><option value="">Todos</option>
         ${(aba === 'aberto' ? ['Atrasado', 'No Prazo'] : ['Entregue no prazo', 'Entregue com atraso']).map(s => `<option ${fAtraso === s ? 'selected' : ''}>${s}</option>`).join('')}</select></label>` : ''}
-      <label class="campo">Buscar<input id="fb" value="${h(busca)}" placeholder="Lote, produto, cor…"></label>
+      ${sel('fp', 'Produto', distintos(lista, 'produto'), fProd)}
+      ${sel('fc', 'Cor', distintos(baseOpcoes, 'cor'), fCor)}
+      ${sel('ft', 'Tamanho', distintos(baseOpcoes, 'tamanho'), fTam)}
+      <label class="campo">Lote / sublote<input id="fb" value="${h(busca)}" placeholder="Buscar lote…"></label>
+      ${fFac || fAtraso || fProd || fCor || fTam || busca ? '<button class="btn peq" id="limpar">Limpar filtros</button>' : ''}
     </div>
+    ${aba !== 'conferir' ? `<p class="muted peq" style="margin-top:-4px">${num(filtrada.length)} envio(s) · ${num(filtrada.reduce((a, e) => a + (e.saldo || 0), 0))} peças pendentes · ${num(filtrada.reduce((a, e) => a + e.qtd, 0))} enviadas</p>` : ''}
     <div id="lista"></div>`;
+  el.querySelector('#fp').onchange = (e) => { fProd = e.target.value; fCor = ''; fTam = ''; render(el); };
+  el.querySelector('#fc').onchange = (e) => { fCor = e.target.value; render(el); };
+  el.querySelector('#ft').onchange = (e) => { fTam = e.target.value; render(el); };
+  el.querySelector('#limpar')?.addEventListener('click', () => { fFac = fAtraso = busca = fProd = fCor = fTam = ''; render(el); });
   el.querySelectorAll('[data-a]').forEach(b => b.onclick = () => { aba = b.dataset.a; fAtraso = ''; render(el); });
   el.querySelector('#ff').onchange = (e) => { fFac = e.target.value; render(el); };
   el.querySelector('#fa')?.addEventListener('change', (e) => { fAtraso = e.target.value; render(el); });
