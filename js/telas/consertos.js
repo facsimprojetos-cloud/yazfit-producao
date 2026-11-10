@@ -1,0 +1,32 @@
+import { db, tem } from '../app.js';
+import { h, num, data, chip, chamar, ler, toast, hojeISO } from '../util.js';
+
+let aba = 'pendentes';
+
+export async function render(el) {
+  const pode = tem('faccao');
+  let q = db.from('v_consertos').select('*').order('data', { ascending: false }).limit(500);
+  q = aba === 'pendentes' ? q.is('data_recebido', null) : q.not('data_recebido', 'is', null);
+  const lista = await ler(q);
+  const grupos = new Map();
+  lista.forEach(c => { if (!grupos.has(c.faccao)) grupos.set(c.faccao, []); grupos.get(c.faccao).push(c); });
+  el.innerHTML = `
+    <div class="cab"><div><h1>3 - Consertos</h1><p>Peças devolvidas para conserto nas facções.</p></div></div>
+    <div class="abas">
+      <button data-a="pendentes" class="${aba === 'pendentes' ? 'ativo' : ''}">Pendentes</button>
+      <button data-a="recebidos" class="${aba === 'recebidos' ? 'ativo' : ''}">Recebidos</button>
+    </div>
+    <div class="tabela-wrap"><table>
+      <thead><tr><th>Data</th><th>Lote</th><th>Produto</th><th>Cor</th><th>Tam.</th><th class="n">Qtd</th><th>Partes</th><th>Obs.</th><th>${aba === 'pendentes' ? '' : 'Recebido'}</th></tr></thead>
+      <tbody>${[...grupos.entries()].map(([fac, itens]) => `
+        <tr class="grupo"><td colspan="9">${h(fac)} · ${num(itens.reduce((a, c) => a + c.qtd, 0))} peça(s)</td></tr>
+        ${itens.map(c => `<tr><td>${data(c.data)}</td><td>${h(c.lote)}</td><td>${h(c.produto)}</td><td>${h(c.cor || '')}</td><td>${h(c.tamanho || '')}</td>
+          <td class="n forte">${num(c.qtd)}</td><td>${chip(c.partes || '')}</td><td class="peq">${h(c.obs || '')}</td>
+          <td>${aba === 'pendentes' ? (pode ? `<button class="btn pri peq" data-rec="${c.id}">Recebido</button>` : '') : data(c.data_recebido)}</td></tr>`).join('')}`).join('')
+        || '<tr><td colspan="9" class="vazio">Nenhum conserto.</td></tr>'}</tbody></table></div>`;
+  el.querySelectorAll('[data-a]').forEach(b => b.onclick = () => { aba = b.dataset.a; render(el); });
+  el.querySelectorAll('[data-rec]').forEach(b => b.onclick = async () => {
+    const dt = prompt('Data do recebimento (AAAA-MM-DD):', hojeISO()); if (!dt) return;
+    if (await chamar(db, 'receber_conserto', { p_conserto_id: b.dataset.rec, p_data: dt })) { toast('Conserto recebido.', 'ok'); render(el); }
+  });
+}
