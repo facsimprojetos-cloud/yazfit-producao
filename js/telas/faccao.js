@@ -1,5 +1,5 @@
 import { db, tem } from '../app.js';
-import { h, num, moeda, data, chip, modal, chamar, ler, cadastros, opcoes, toast, hojeISO, confirmar } from '../util.js';
+import { h, num, moeda, data, chip, modal, chamar, ler, cadastros, opcoes, toast, hojeISO, confirmar, pedirTexto } from '../util.js';
 
 let aba = 'aberto';
 let fFac = '', fAtraso = '', busca = '', fProd = '', fCor = '', fTam = '';
@@ -11,6 +11,7 @@ const sel = (id, rotulo, valores, atual) => `<label class="campo">${rotulo}<sele
 
 export async function render(el) {
   const pode = tem('faccao');
+  const sup = tem('supervisor');
   const cad = await cadastros(db);
   let lista;
   if (aba === 'conferir') {
@@ -60,9 +61,11 @@ export async function render(el) {
       <div class="linha1"><div><div class="tit">${h(r.faccao)}</div><div class="det">${h(r.produto)} · ${h(r.cor || '')} · ${h(r.tamanho || '')}</div><div class="det">Lote ${h(r.lote)} · retorno ${data(r.data_retorno)}</div></div>${chip('A conferir', 'alerta')}</div>
       <div class="det" style="margin-top:8px">Cima: <b>${r.ret_cima}</b> (def. ${r.def_cima}, cons. ${r.cons_cima}) · Baixo: <b>${r.ret_baixo}</b> (def. ${r.def_baixo}, cons. ${r.cons_baixo})</div>
       <div class="det">Valor calculado: <b>${moeda(r.valor_a_pagar)}</b></div>
-      ${pode ? `<div class="acoes" style="margin-top:10px"><button class="btn pri peq" data-conf="${r.id}">Conferir</button></div>` : ''}
+      <div class="acoes" style="margin-top:10px">${pode ? `<button class="btn pri peq" data-conf="${r.id}">Conferir</button>` : ''}
+        ${sup ? `<button class="btn peq perigo" data-exret="${r.id}">🗑 Excluir</button>` : ''}</div>
     </div>`).join('') || '<div class="vazio">Nenhum retorno aguardando conferência.</div>'}</div>`;
     alvo.querySelectorAll('[data-conf]').forEach(b => b.onclick = () => formRetorno(null, filtrada.find(r => r.id === b.dataset.conf), () => render(el)));
+    alvo.querySelectorAll('[data-exret]').forEach(b => b.onclick = () => excluirRetorno(filtrada.find(r => r.id === b.dataset.exret), () => render(el)));
     return;
   }
 
@@ -70,7 +73,7 @@ export async function render(el) {
   filtrada.forEach(e => { if (!grupos.has(e.faccao)) grupos.set(e.faccao, []); grupos.get(e.faccao).push(e); });
   alvo.innerHTML = [...grupos.entries()].map(([fac, itens]) => `
     <h2 style="margin-top:14px">${h(fac)} <span class="muted peq">${num(itens.reduce((a, e) => a + e.saldo, 0))} peças pendentes · ${itens.length} envio(s)</span></h2>
-    <div class="lista-cards">${itens.map(e => cartao(e, pode)).join('')}</div>`).join('') || '<div class="vazio">Nenhum envio.</div>';
+    <div class="lista-cards">${itens.map(e => cartao(e, pode, sup)).join('')}</div>`).join('') || '<div class="vazio">Nenhum envio.</div>';
 
   alvo.querySelectorAll('[data-acao]').forEach(b => b.onclick = async () => {
     const e = filtrada.find(x => x.id === b.dataset.id);
@@ -80,11 +83,20 @@ export async function render(el) {
       const t = prompt('Ocorrência:', e.ocorrencia || ''); if (t === null) return;
       if (await chamar(db, 'registrar_ocorrencia', { p_envio_id: e.id, p_texto: t || null })) { toast('Ocorrência registrada.', 'ok'); render(el); }
     }
-    if (b.dataset.acao === 'historico') historico(e);
+    if (b.dataset.acao === 'historico') historico(e, () => render(el));
+    if (b.dataset.acao === 'editar') editarEnvio(e, () => render(el));
+    if (b.dataset.acao === 'excluir') {
+      const motivo = await pedirTexto('Excluir envio', `Excluir o envio de <b>${num(e.qtd)}</b> peças de <b>${h(e.produto)}</b> para <b>${h(e.faccao)}</b>? As peças voltam para o saldo do sublote ${h(e.sublote)}.`, { botao: 'Excluir envio' });
+      if (motivo && await chamar(db, 'excluir_envio', { p_envio_id: e.id, p_motivo: motivo })) { toast('Envio excluído.', 'ok'); render(el); }
+    }
+    if (b.dataset.acao === 'reabrir') {
+      if (await confirmar('Reabrir envio', `Reabrir o envio de <b>${h(e.produto)}</b> (${h(e.faccao)})? Ele volta para "Em aberto".`, 'Reabrir'))
+        if (await chamar(db, 'reabrir_envio', { p_envio_id: e.id })) { toast('Envio reaberto.', 'ok'); render(el); }
+    }
   });
 }
 
-function cartao(e, pode) {
+function cartao(e, pode, sup) {
   const corAtraso = { 'Atrasado': 'erro', 'No Prazo': 'ok', 'Entregue no prazo': 'ok', 'Entregue com atraso': 'alerta' }[e.atraso];
   return `<div class="item">
     <div class="linha1"><div><div class="tit">${h(e.produto)}</div><div class="det">${h(e.cor || '')} · ${h(e.tamanho || '')} · Lote ${h(e.lote)}</div>
@@ -100,6 +112,9 @@ function cartao(e, pode) {
         <button class="btn peq" data-acao="ocorrencia" data-id="${e.id}">Ocorrência</button>
         ${e.qtd_retornos > 0 ? `<button class="btn peq" data-acao="finalizar" data-id="${e.id}">Finalizar</button>` : ''}` : ''}
       ${e.qtd_retornos > 0 ? `<button class="btn peq" data-acao="historico" data-id="${e.id}">Retornos (${e.qtd_retornos})</button>` : ''}
+      ${sup ? `<button class="btn peq" data-acao="editar" data-id="${e.id}">Editar envio</button>` : ''}
+      ${sup && e.data_retorno ? `<button class="btn peq" data-acao="reabrir" data-id="${e.id}">Reabrir</button>` : ''}
+      ${sup && !e.qtd_retornos ? `<button class="btn peq perigo" data-acao="excluir" data-id="${e.id}">🗑 Excluir</button>` : ''}
     </div></div>`;
 }
 
@@ -162,14 +177,52 @@ function finalizar(e, depois) {
   });
 }
 
-async function historico(e) {
+async function historico(e, depois) {
+  const sup = tem('supervisor'), pode = tem('faccao');
   const rets = await ler(db.from('v_retornos').select('*').eq('envio_id', e.id).order('data_retorno'));
   modal({
     titulo: `Retornos — ${e.produto} (${e.faccao})`, largo: true,
-    corpo: `<div class="tabela-wrap"><table><thead><tr><th>Retorno</th><th>Conferência</th><th class="n">Cima</th><th class="n">Baixo</th><th class="n">Defeito</th><th class="n">Conserto</th><th class="n">Valor</th><th>Situação</th></tr></thead>
+    corpo: `<div class="tabela-wrap"><table><thead><tr><th>Retorno</th><th>Conferência</th><th class="n">Cima</th><th class="n">Baixo</th><th class="n">Defeito</th><th class="n">Conserto</th><th class="n">Valor</th><th>Situação</th><th></th></tr></thead>
       <tbody>${rets.map(r => `<tr><td>${data(r.data_retorno)}</td><td>${data(r.data_conferencia) || '—'}</td><td class="n">${r.ret_cima}</td><td class="n">${r.ret_baixo}</td>
         <td class="n">${r.def_cima + r.def_baixo}</td><td class="n">${r.cons_cima + r.cons_baixo}</td><td class="n">${moeda(r.valor_a_pagar)}</td>
-        <td>${chip(r.situacao, r.situacao === 'PAGO' ? 'ok' : r.situacao === 'ABERTO' ? 'info' : 'alerta')}</td></tr>`).join('')}</tbody></table></div>`,
-    botoes: [{ texto: 'Fechar' }]
+        <td>${chip(r.situacao, r.situacao === 'PAGO' ? 'ok' : r.situacao === 'ABERTO' ? 'info' : 'alerta')}</td>
+        <td>${r.situacao !== 'PAGO' ? `<div class="acoes">${pode ? `<button class="btn peq" data-edr="${r.id}">Editar</button>` : ''}${sup ? `<button class="btn peq perigo" data-exr="${r.id}">🗑</button>` : ''}</div>` : ''}</td></tr>`).join('')}</tbody></table></div>
+      <p class="muted peq">Retorno pago só pode ser alterado depois de estornar o pagamento em Fechamento.</p>`,
+    botoes: [{ texto: 'Fechar' }],
+    aoAbrir: (m, fechar) => {
+      m.querySelectorAll('[data-edr]').forEach(b => b.onclick = () => { fechar(); formRetorno(null, rets.find(r => r.id === b.dataset.edr), depois); });
+      m.querySelectorAll('[data-exr]').forEach(b => b.onclick = () => { fechar(); excluirRetorno(rets.find(r => r.id === b.dataset.exr), depois); });
+    }
+  });
+}
+
+async function excluirRetorno(r, depois) {
+  const motivo = await pedirTexto('Excluir retorno', `Excluir o retorno de ${data(r.data_retorno)} (cima ${r.ret_cima} / baixo ${r.ret_baixo}) de <b>${h(r.produto)}</b>? O conserto ligado a ele também será apagado e o envio volta a ficar pendente.`, { botao: 'Excluir retorno' });
+  if (motivo && await chamar(db, 'excluir_retorno', { p_retorno_id: r.id, p_motivo: motivo })) { toast('Retorno excluído.', 'ok'); depois(); }
+}
+
+function editarEnvio(e, depois) {
+  const conj = e.classificacao === 'Conjunto';
+  const temC = conj || e.valor_cima != null, temB = conj || e.valor_baixo != null;
+  modal({
+    titulo: `Editar envio — ${e.produto}`,
+    corpo: `<p>${h(e.faccao)} · ${h(e.cor || '')} · ${h(e.tamanho || '')} · sublote ${h(e.sublote)}<br>Já retornado: cima ${e.ret_cima} / baixo ${e.ret_baixo}</p>
+      <div class="grade g2">
+        <label class="campo">Quantidade enviada<input type="number" id="q" min="1" value="${e.qtd}"></label>
+        <label class="campo">Previsão de retorno<input type="date" id="pv" value="${e.previsao}"></label>
+        ${temC || !temB ? `<label class="campo">Valor parte de cima (R$)<input type="number" id="vc" min="0" step="0.01" value="${e.valor_cima ?? ''}"></label>` : ''}
+        ${temB ? `<label class="campo">Valor parte de baixo (R$)<input type="number" id="vb" min="0" step="0.01" value="${e.valor_baixo ?? ''}"></label>` : ''}
+      </div>
+      <p class="muted peq">Mudar a quantidade ajusta o saldo do sublote. Mudar o valor atualiza também os retornos ainda não pagos.</p>`,
+    botoes: [{ texto: 'Cancelar' }, {
+      texto: 'Salvar', classe: 'pri', acao: async (m) => {
+        const vc = m.querySelector('#vc'), vb = m.querySelector('#vb');
+        const r = await chamar(db, 'editar_envio', { p_envio_id: e.id, p_qtd: +m.querySelector('#q').value,
+          p_valor_cima: vc && vc.value !== '' ? +vc.value : null, p_valor_baixo: vb && vb.value !== '' ? +vb.value : null,
+          p_previsao: m.querySelector('#pv').value || null });
+        if (!r) return false;
+        toast('Envio atualizado.', 'ok'); depois();
+      }
+    }]
   });
 }

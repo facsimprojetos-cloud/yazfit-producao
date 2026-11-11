@@ -100,6 +100,23 @@ export function confirmar(titulo, texto, textoBotao = 'Confirmar', classe = 'pri
   });
 }
 
+// Pede um texto (ex.: motivo de exclusão). Devolve o texto ou null se cancelar.
+export function pedirTexto(titulo, texto, { rotulo = 'Motivo', minimo = 3, botao = 'Confirmar', classe = 'perigo', valor = '' } = {}) {
+  return new Promise(res => {
+    let resultado = null;
+    const m = modal({ titulo, corpo: `<p>${texto}</p><label class="campo">${h(rotulo)}<input id="pt-txt" value="${h(valor)}"></label>`, botoes: [
+      { texto: 'Cancelar' },
+      { texto: botao, classe, acao: (el) => {
+        const v = el.querySelector('#pt-txt').value.trim();
+        if (v.length < minimo) { toast(`${rotulo}: mínimo de ${minimo} caracteres.`, 'erro'); return false; }
+        resultado = v;
+      } }
+    ]});
+    const obs = new MutationObserver(() => { if (!document.body.contains(m.el)) { obs.disconnect(); res(resultado); } });
+    obs.observe(document.getElementById('modal-raiz'), { childList: true });
+  });
+}
+
 export function formDados(form) {
   const o = {};
   new FormData(form).forEach((v, k) => { o[k] = typeof v === 'string' ? v.trim() : v; });

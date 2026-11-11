@@ -1,6 +1,6 @@
 import { db, tem } from '../app.js';
 import { PREVISAO_DIAS } from '../config.js';
-import { h, num, moeda, chip, modal, chamar, ler, cadastros, opcoes, toast, token, hojeISO, confirmar } from '../util.js';
+import { h, num, moeda, chip, modal, chamar, ler, cadastros, opcoes, toast, token, hojeISO, confirmar, pedirTexto } from '../util.js';
 import { imprimirRomaneio } from '../romaneio.js';
 
 const COR = { 'AGUARDANDO SEPARAÇÃO': 'info', 'SEPARADO PARCIALMENTE': 'alerta', 'SEPARADO': 'ok', 'AGUARDANDO CALANDRA': 'erro', 'EM CALANDRA': 'erro' };
@@ -14,6 +14,8 @@ export async function render(el) {
   if (aba === 'calandra') q = q.in('status_calandra', ['Aguardando Calandra', 'Em Calandra']);
   const lista = await ler(q);
   const pode = tem('faccao');
+  const sup = tem('supervisor');
+  const ncol = 8 + (aba === 'separar' && pode ? 2 : 0) + (sup ? 1 : 0);
   const filtrada = lista.filter(s => !busca || [s.codigo, s.lote, s.produto, s.cor, s.tamanho].join(' ').toLowerCase().includes(busca.toLowerCase()));
   for (const id of selecionados.keys()) if (!lista.some(s => s.id === id && s.disponivel_envio)) selecionados.delete(id);
 
@@ -30,16 +32,17 @@ export async function render(el) {
     </div>
     <div class="filtros"><label class="campo">Buscar<input id="busca" value="${h(busca)}" placeholder="Lote, produto, cor…"></label></div>
     <div class="tabela-wrap"><table>
-      <thead><tr>${aba === 'separar' && pode ? '<th></th>' : ''}<th>Sublote</th><th>Produto</th><th>Cor</th><th>Tam.</th><th class="n">Cortado</th><th class="n">Saldo</th><th class="n">Facção</th><th>Status</th>${aba === 'separar' && pode ? '<th class="n">Enviar</th>' : ''}</tr></thead>
+      <thead><tr>${aba === 'separar' && pode ? '<th></th>' : ''}<th>Sublote</th><th>Produto</th><th>Cor</th><th>Tam.</th><th class="n">Cortado</th><th class="n">Saldo</th><th class="n">Facção</th><th>Status</th>${aba === 'separar' && pode ? '<th class="n">Enviar</th>' : ''}${sup ? '<th></th>' : ''}</tr></thead>
       <tbody>${[...grupos.entries()].map(([lote, itens]) => `
-        <tr class="grupo"><td colspan="${aba === 'separar' && pode ? 10 : 8}">Lote ${h(lote)} · ${num(itens.reduce((a, s) => a + s.qtd_saldo, 0))} peças em saldo</td></tr>
+        <tr class="grupo"><td colspan="${ncol}">Lote ${h(lote)} · ${num(itens.reduce((a, s) => a + s.qtd_saldo, 0))} peças em saldo</td></tr>
         ${itens.map(s => `<tr>
           ${aba === 'separar' && pode ? `<td><input type="checkbox" data-sel="${s.id}" ${selecionados.has(s.id) ? 'checked' : ''}></td>` : ''}
           <td class="forte">${h(s.codigo)}</td><td>${h(s.produto)}</td><td>${h(s.cor || '')}</td><td>${h(s.tamanho || '')}</td>
           <td class="n">${num(s.qtd_cortada)}</td><td class="n forte">${num(s.qtd_saldo)}</td><td class="n">${num(s.qtd_faccao + s.qtd_interna)}</td>
           <td>${chip(s.status_lote, COR[s.status_lote])}</td>
           ${aba === 'separar' && pode ? `<td class="n"><input class="inp num" type="number" min="1" max="${s.qtd_saldo}" data-qtd="${s.id}" value="${selecionados.get(s.id) ?? s.qtd_saldo}"></td>` : ''}
-        </tr>`).join('')}`).join('') || `<tr><td colspan="10" class="vazio">Nada por aqui.</td></tr>`}
+          ${sup ? `<td>${s.operacao_id ? '' : `<button class="btn peq" data-ajuste="${s.id}">Ajustar qtd</button>`}</td>` : ''}
+        </tr>`).join('')}`).join('') || `<tr><td colspan="${ncol}" class="vazio">Nada por aqui.</td></tr>`}
       </tbody></table></div>`;
 
   el.querySelectorAll('[data-a]').forEach(b => b.onclick = () => { aba = b.dataset.a; render(el); });
@@ -56,6 +59,26 @@ export async function render(el) {
     const id = i.dataset.qtd; if (selecionados.has(id)) selecionados.set(id, +i.value);
   });
   btnEnviar?.addEventListener('click', () => telaEnvio(lista.filter(s => selecionados.has(s.id)), () => render(el)));
+  el.querySelectorAll('[data-ajuste]').forEach(b => b.onclick = () => ajustar(lista.find(s => s.id === b.dataset.ajuste), () => render(el)));
+}
+
+function ajustar(s, depois) {
+  const enviado = s.qtd_faccao + s.qtd_interna;
+  modal({
+    titulo: `Ajustar sublote ${s.codigo}`,
+    corpo: `<p>${h(s.produto)} · ${h(s.cor || '')} · ${h(s.tamanho || '')}<br>Cortado hoje: <b>${num(s.qtd_cortada)}</b> · já enviado: <b>${num(enviado)}</b></p>
+      <div class="grade g2"><label class="campo">Quantidade cortada correta<input type="number" id="nq" min="${enviado}" value="${s.qtd_cortada}"></label>
+      <label class="campo">Motivo<input id="mt"></label></div>`,
+    botoes: [{ texto: 'Cancelar' }, {
+      texto: 'Salvar ajuste', classe: 'pri', acao: async (m) => {
+        const nq = +m.querySelector('#nq').value, mt = m.querySelector('#mt').value.trim();
+        if (!(nq >= enviado)) { toast(`A quantidade não pode ser menor que ${enviado} (já enviado).`, 'erro'); return false; }
+        if (mt.length < 3) { toast('Informe o motivo.', 'erro'); return false; }
+        if (!await chamar(db, 'ajustar_sublote', { p_sublote_id: s.id, p_qtd_cortada: nq, p_motivo: mt })) return false;
+        toast('Sublote ajustado.', 'ok'); depois();
+      }
+    }]
+  });
 }
 
 async function telaEnvio(itens, depois) {

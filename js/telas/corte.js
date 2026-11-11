@@ -1,6 +1,6 @@
 import { db, tem } from '../app.js';
 import { EMPRESA } from '../config.js';
-import { h, num, data, chip, modal, confirmar, chamar, ler, cadastros, opcoes, toast, imprimirEtiquetas } from '../util.js';
+import { h, num, data, chip, modal, confirmar, chamar, ler, cadastros, opcoes, toast, imprimirEtiquetas, pedirTexto } from '../util.js';
 
 const COR_STATUS = { 'Liberado para Corte': 'ok', 'Em Espera na Calandra': 'alerta', 'Em Calandra': 'info', 'Cortado': '', 'Cancelado': 'erro' };
 let filtro = 'abertos';
@@ -12,6 +12,7 @@ export async function render(el) {
   if (filtro === 'cortados') q = q.eq('status', 'Cortado');
   const cortes = await ler(q);
   const pode = tem('corte');
+  const sup = tem('supervisor');
 
   el.innerHTML = `
     <div class="cab"><div><h1>1 - Pedido de Corte</h1><p>Programe o corte; confirme quando estiver liberado para gerar sublotes e etiquetas.</p></div>
@@ -21,7 +22,7 @@ export async function render(el) {
       <button data-f="cortados" class="${filtro === 'cortados' ? 'ativo' : ''}">Cortados</button>
       <button data-f="todos" class="${filtro === 'todos' ? 'ativo' : ''}">Todos</button>
     </div>
-    <div class="lista-cards">${cortes.map(c => cartao(c, pode)).join('') || '<div class="vazio">Nenhum pedido.</div>'}</div>`;
+    <div class="lista-cards">${cortes.map(c => cartao(c, pode, sup)).join('') || '<div class="vazio">Nenhum pedido.</div>'}</div>`;
 
   el.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { filtro = b.dataset.f; render(el); });
   el.querySelector('#novo')?.addEventListener('click', () => formCorte(cad, null, () => render(el)));
@@ -34,6 +35,15 @@ export async function render(el) {
       const { data: r } = await db.from('cortes').select('etiquetas').eq('id', c.id).single();
       if (r?.etiquetas?.length) imprimirEtiquetas(r.etiquetas, EMPRESA); else toast('Sem etiquetas salvas.', 'erro');
     }
+    if (b.dataset.acao === 'estornar') {
+      const motivo = await pedirTexto(`Estornar corte do lote ${c.lote}`,
+        'Os sublotes e as etiquetas deste corte serão apagados e o pedido volta para <b>Liberado para Corte</b>. Só é possível se nada foi enviado para facção.', { botao: 'Estornar corte' });
+      if (motivo && await chamar(db, 'estornar_corte', { p_corte_id: c.id, p_motivo: motivo })) { toast('Corte estornado.', 'ok'); render(el); }
+    }
+    if (b.dataset.acao === 'excluir') {
+      const motivo = await pedirTexto(`Excluir pedido do lote ${c.lote}`, 'O pedido será apagado definitivamente.', { botao: 'Excluir' });
+      if (motivo && await chamar(db, 'excluir_corte', { p_corte_id: c.id, p_motivo: motivo })) { toast('Pedido excluído.', 'ok'); render(el); }
+    }
     if (b.dataset.acao === 'cancelar') {
       const motivo = prompt('Motivo do cancelamento:');
       if (!motivo) return;
@@ -42,7 +52,7 @@ export async function render(el) {
   });
 }
 
-function cartao(c, pode) {
+function cartao(c, pode, sup) {
   const cores = (c.cores || []).map(x => `${h(x.cor)} <b>${x.folhas}</b>`).join(' · ');
   const tams = (c.tamanhos || []).map(x => `${h(x.tamanho)} <b>${x.riscos}</b>`).join(' · ');
   const aberto = ['Liberado para Corte', 'Em Espera na Calandra', 'Em Calandra'].includes(c.status);
@@ -60,6 +70,8 @@ function cartao(c, pode) {
       ${c.status === 'Cortado' ? `<button class="btn peq" data-acao="etiquetas" data-id="${c.id}">🏷️ Etiquetas</button>` : ''}
       ${pode ? `<button class="btn peq" data-acao="duplicar" data-id="${c.id}">Duplicar</button>` : ''}
       ${pode && aberto ? `<button class="btn peq perigo" data-acao="cancelar" data-id="${c.id}">Cancelar</button>` : ''}
+      ${sup && c.status === 'Cortado' ? `<button class="btn peq perigo" data-acao="estornar" data-id="${c.id}">↩ Estornar corte</button>` : ''}
+      ${sup && c.status !== 'Cortado' ? `<button class="btn peq perigo" data-acao="excluir" data-id="${c.id}">🗑 Excluir</button>` : ''}
     </div></div>`;
 }
 

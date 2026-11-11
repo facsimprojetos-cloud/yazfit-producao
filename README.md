@@ -18,6 +18,8 @@ Substitui o app AppSheet "PRODUÇÃO - YAZFITWEAR" e os web apps de Corte, Roman
 | Cadastros | Produtos, facções, cores, tamanhos, operadores | cadastros (admin) edita |
 | Usuários | Libera contas e define perfis | admin |
 
+**Supervisor**: pode editar e excluir qualquer lançamento (estornar corte, ajustar sublote, editar/excluir operação da calandra, envio, romaneio e retorno, reabrir envio, desfazer conserto, estornar pagamento). As exclusões seguem a ordem do fluxo e ficam registradas na auditoria.
+
 ## Primeiro acesso
 1. Abra o app e clique em **Criar conta** (e-mail + senha). Confirme pelo e-mail.
 2. Entre: como ainda não há administrador, a tela oferece **Tornar-me administrador**.

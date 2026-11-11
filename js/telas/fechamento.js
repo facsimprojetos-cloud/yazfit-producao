@@ -1,5 +1,5 @@
 import { db, tem, ctx } from '../app.js';
-import { h, num, moeda, data, chip, modal, chamar, ler, cadastros, opcoes, toast, token, hojeISO, confirmar } from '../util.js';
+import { h, num, moeda, data, chip, modal, chamar, ler, cadastros, opcoes, toast, token, hojeISO, confirmar, pedirTexto } from '../util.js';
 
 let aba = 'abertos';
 let fFac = '';
@@ -29,8 +29,13 @@ export async function render(el) {
       <tbody>${pg.map(p => `<tr><td class="forte">${h(p.codigo)}</td><td>${data(p.data_pagamento)}</td><td>${h(p.faccao)}</td><td class="n">${p.itens}</td>
         <td class="n">${moeda(p.valor_bruto)}</td><td class="n">${moeda(p.desconto)}</td><td class="n forte">${moeda(p.valor_pago)}</td><td>${h(p.responsavel)}</td>
         <td>${p.comprovante_url ? `<a href="${h(p.comprovante_url)}" target="_blank" rel="noopener">abrir</a>` : ''}</td>
-        <td><button class="btn peq" data-det="${p.id}">Detalhes</button></td></tr>`).join('') || '<tr><td colspan="10" class="vazio">Nenhum pagamento.</td></tr>'}</tbody></table></div>`;
+        <td><div class="acoes"><button class="btn peq" data-det="${p.id}">Detalhes</button>${tem('supervisor') ? `<button class="btn peq perigo" data-est="${p.id}">↩ Estornar</button>` : ''}</div></td></tr>`).join('') || '<tr><td colspan="10" class="vazio">Nenhum pagamento.</td></tr>'}</tbody></table></div>`;
     alvo.querySelectorAll('[data-det]').forEach(b => b.onclick = () => detalhes(pg.find(p => p.id === b.dataset.det)));
+    alvo.querySelectorAll('[data-est]').forEach(b => b.onclick = async () => {
+      const p = pg.find(x => x.id === b.dataset.est);
+      const motivo = await pedirTexto(`Estornar pagamento ${p.codigo}`, `Estornar o pagamento de <b>${moeda(p.valor_pago)}</b> para <b>${h(p.faccao)}</b>? Os ${p.itens} retorno(s) voltam para "A pagar".`, { botao: 'Estornar', minimo: 5 });
+      if (motivo && await chamar(db, 'estornar_fechamento', { p_fechamento_id: p.id, p_motivo: motivo })) { toast('Pagamento estornado.', 'ok'); render(el); }
+    });
     return;
   }
 

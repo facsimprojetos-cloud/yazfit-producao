@@ -1,10 +1,11 @@
 import { db, tem } from '../app.js';
-import { h, num, data, chip, chamar, ler, toast, hojeISO } from '../util.js';
+import { h, num, data, chip, chamar, ler, toast, hojeISO, confirmar } from '../util.js';
 
 let aba = 'pendentes';
 
 export async function render(el) {
   const pode = tem('faccao');
+  const sup = tem('supervisor');
   let q = db.from('v_consertos').select('*').order('data', { ascending: false }).limit(500);
   q = aba === 'pendentes' ? q.is('data_recebido', null) : q.not('data_recebido', 'is', null);
   const lista = await ler(q);
@@ -22,9 +23,13 @@ export async function render(el) {
         <tr class="grupo"><td colspan="9">${h(fac)} · ${num(itens.reduce((a, c) => a + c.qtd, 0))} peça(s)</td></tr>
         ${itens.map(c => `<tr><td>${data(c.data)}</td><td>${h(c.lote)}</td><td>${h(c.produto)}</td><td>${h(c.cor || '')}</td><td>${h(c.tamanho || '')}</td>
           <td class="n forte">${num(c.qtd)}</td><td>${chip(c.partes || '')}</td><td class="peq">${h(c.obs || '')}</td>
-          <td>${aba === 'pendentes' ? (pode ? `<button class="btn pri peq" data-rec="${c.id}">Recebido</button>` : '') : data(c.data_recebido)}</td></tr>`).join('')}`).join('')
+          <td>${aba === 'pendentes' ? (pode ? `<button class="btn pri peq" data-rec="${c.id}">Recebido</button>` : '') : `${data(c.data_recebido)} ${sup ? `<button class="btn peq" data-desf="${c.id}">Desfazer</button>` : ''}`}</td></tr>`).join('')}`).join('')
         || '<tr><td colspan="9" class="vazio">Nenhum conserto.</td></tr>'}</tbody></table></div>`;
   el.querySelectorAll('[data-a]').forEach(b => b.onclick = () => { aba = b.dataset.a; render(el); });
+  el.querySelectorAll('[data-desf]').forEach(b => b.onclick = async () => {
+    if (!await confirmar('Desfazer recebimento', 'O conserto volta para Pendentes.', 'Desfazer')) return;
+    if (await chamar(db, 'desfazer_recebimento_conserto', { p_conserto_id: b.dataset.desf })) { toast('Recebimento desfeito.', 'ok'); render(el); }
+  });
   el.querySelectorAll('[data-rec]').forEach(b => b.onclick = async () => {
     const dt = prompt('Data do recebimento (AAAA-MM-DD):', hojeISO()); if (!dt) return;
     if (await chamar(db, 'receber_conserto', { p_conserto_id: b.dataset.rec, p_data: dt })) { toast('Conserto recebido.', 'ok'); render(el); }

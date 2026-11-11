@@ -2,7 +2,7 @@ import { db, ctx } from '../app.js';
 import { h, dataHora, chip, modal, ler, toast, msgErro, chamar } from '../util.js';
 
 const PERFIS = [
-  ['admin', 'Administrador (tudo)'], ['cadastros', 'Cadastros (produtos, facções, cores…)'], ['corte', 'Corte'], ['calandra', 'Calandra'],
+  ['admin', 'Administrador (tudo)'], ['supervisor', 'Supervisor (editar e excluir qualquer lançamento)'], ['cadastros', 'Cadastros (produtos, facções, cores…)'], ['corte', 'Corte'], ['calandra', 'Calandra'],
   ['faccao', 'Facção / Lotes / Consertos'], ['financeiro', 'Financeiro'], ['consulta', 'Só consulta'],
 ];
 

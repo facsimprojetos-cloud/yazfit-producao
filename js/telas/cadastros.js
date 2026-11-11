@@ -1,5 +1,5 @@
 import { db, tem } from '../app.js';
-import { h, moeda, chip, modal, ler, toast, msgErro, limparCache, formDados } from '../util.js';
+import { h, moeda, chip, modal, ler, toast, msgErro, limparCache, formDados, confirmar } from '../util.js';
 
 const TABELAS = {
   produtos: { nome: 'Produtos', ordem: 'nome', campos: [
@@ -36,11 +36,22 @@ export async function render(el) {
     <label class="peq"><input type="checkbox" id="inat" ${mostrarInativos ? 'checked' : ''}> mostrar inativos</label>
     <div class="tabela-wrap" style="margin-top:8px"><table><thead><tr>${t.cab.map(c => `<th>${c}</th>`).join('')}<th>Status</th>${admin ? '<th></th>' : ''}</tr></thead>
       <tbody>${lista.map(x => `<tr>${t.colunas(x).map(c => `<td>${c}</td>`).join('')}<td>${x.ativo ? chip('Ativo', 'ok') : chip('Inativo', 'erro')}</td>
-        ${admin ? `<td><button class="btn peq" data-ed="${x.id}">Editar</button></td>` : ''}</tr>`).join('') || '<tr><td colspan="9" class="vazio">Nenhum registro.</td></tr>'}</tbody></table></div>`;
+        ${admin ? `<td><div class="acoes"><button class="btn peq" data-ed="${x.id}">Editar</button><button class="btn peq perigo" data-del="${x.id}">🗑</button></div></td>` : ''}</tr>`).join('') || '<tr><td colspan="9" class="vazio">Nenhum registro.</td></tr>'}</tbody></table></div>`;
   el.querySelectorAll('[data-a]').forEach(b => b.onclick = () => { aba = b.dataset.a; render(el); });
   el.querySelector('#inat').onchange = (e) => { mostrarInativos = e.target.checked; render(el); };
   el.querySelector('#novo')?.addEventListener('click', () => form(null, () => render(el)));
   el.querySelectorAll('[data-ed]').forEach(b => b.onclick = () => form(lista.find(x => String(x.id) === b.dataset.ed), () => render(el)));
+  el.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+    const x = lista.find(r => String(r.id) === b.dataset.del);
+    if (!await confirmar('Excluir cadastro', `Excluir <b>${h(x.nome)}</b> de ${t.nome}?`, 'Excluir', 'perigo')) return;
+    const { error } = await db.from(aba).delete().eq('id', x.id);
+    if (error) {
+      if (/foreign key|violates/i.test(error.message)) toast(`"${x.nome}" já foi usado em lançamentos e não pode ser excluído. Edite e desmarque "Ativo" para escondê-lo.`, 'erro');
+      else toast(msgErro(error), 'erro');
+      return;
+    }
+    limparCache(); toast('Excluído.', 'ok'); render(el);
+  });
 }
 
 function campo(c, v) {
