@@ -1,5 +1,5 @@
 import { db, tem } from '../app.js';
-import { h, num, data, chip, chamar, ler, toast, hojeISO, confirmar } from '../util.js';
+import { h, num, data, chip, chamar, ler, toast, hojeISO, confirmar, modal } from '../util.js';
 
 let aba = 'pendentes';
 
@@ -30,8 +30,18 @@ export async function render(el) {
     if (!await confirmar('Desfazer recebimento', 'O conserto volta para Pendentes.', 'Desfazer')) return;
     if (await chamar(db, 'desfazer_recebimento_conserto', { p_conserto_id: b.dataset.desf })) { toast('Recebimento desfeito.', 'ok'); render(el); }
   });
-  el.querySelectorAll('[data-rec]').forEach(b => b.onclick = async () => {
-    const dt = prompt('Data do recebimento (AAAA-MM-DD):', hojeISO()); if (!dt) return;
-    if (await chamar(db, 'receber_conserto', { p_conserto_id: b.dataset.rec, p_data: dt })) { toast('Conserto recebido.', 'ok'); render(el); }
+  el.querySelectorAll('[data-rec]').forEach(b => b.onclick = () => {
+    const c = lista.find(x => x.id === b.dataset.rec);
+    modal({
+      titulo: 'Conserto recebido',
+      corpo: `<p><b>${num(c.qtd)}</b> peça(s) de <b>${h(c.produto)}</b> ${h(c.cor || '')} ${h(c.tamanho || '')} — ${h(c.faccao)}</p>
+        <label class="campo">Data do recebimento<input type="date" id="dt" value="${hojeISO()}" max="${hojeISO()}"></label>`,
+      botoes: [{ texto: 'Cancelar' }, { texto: 'Confirmar recebimento', classe: 'pri', acao: async (m) => {
+        const dt = m.querySelector('#dt').value;
+        if (!dt) { toast('Informe a data.', 'erro'); return false; }
+        if (!await chamar(db, 'receber_conserto', { p_conserto_id: c.id, p_data: dt })) return false;
+        toast('Conserto recebido.', 'ok'); render(el);
+      } }]
+    });
   });
 }

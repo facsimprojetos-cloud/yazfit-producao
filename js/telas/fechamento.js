@@ -56,18 +56,22 @@ export async function render(el) {
   const total = () => lista.filter(r => marcados.has(r.id)).reduce((a, r) => a + Number(r.valor_a_pagar), 0);
   alvo.innerHTML = `
     <div class="tabela-wrap"><table><thead><tr>${aba === 'abertos' && pode ? '<th><input type="checkbox" id="todos"></th>' : ''}<th>Lote</th><th>Produto</th><th>Cor/Tam</th><th>Retorno</th><th>Conferência</th>
-      <th class="n">Cima</th><th class="n">Baixo</th><th class="n">Defeito</th><th class="n">R$ cima</th><th class="n">R$ baixo</th><th class="n">Valor</th>${aba !== 'abertos' ? '<th>Motivo</th>' : ''}</tr></thead>
+      <th class="n">Cima</th><th class="n">Baixo</th><th class="n">Defeito</th><th>Conserto</th><th class="n">R$ cima</th><th class="n">R$ baixo</th><th class="n">Valor</th>${aba !== 'abertos' ? '<th>Motivo</th>' : ''}</tr></thead>
       <tbody>${lista.map(r => `<tr>${aba === 'abertos' && pode ? `<td><input type="checkbox" data-m="${r.id}" ${marcados.has(r.id) ? 'checked' : ''}></td>` : ''}
         <td>${h(r.lote)}</td><td>${h(r.produto)}</td><td>${h(r.cor || '')} / ${h(r.tamanho || '')}</td><td>${data(r.data_retorno)}</td><td>${data(r.data_conferencia) || '—'}</td>
         <td class="n">${r.ret_cima}</td><td class="n">${r.ret_baixo}</td><td class="n">${r.def_cima + r.def_baixo}</td>
+        <td>${conserto(r)}</td>
         <td class="n">${r.valor_cima != null ? moeda(r.valor_cima) : '—'}</td><td class="n">${r.valor_baixo != null ? moeda(r.valor_baixo) : '—'}</td>
         <td class="n forte">${moeda(r.valor_a_pagar)}</td>${aba !== 'abertos' ? `<td>${chip(r.motivo || r.situacao, 'alerta')}</td>` : ''}</tr>`).join('')
-        || '<tr><td colspan="13" class="vazio">Nada aqui.</td></tr>'}</tbody></table></div>
+        || '<tr><td colspan="14" class="vazio">Nada aqui.</td></tr>'}</tbody></table></div>
     ${aba === 'abertos' && pode ? `<div class="card" style="margin-top:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
-      <div>Selecionados: <b id="qs">${marcados.size}</b> · Total bruto: <b id="ts">${moeda(total())}</b></div>
+      <div>Selecionados: <b id="qs">${marcados.size}</b> · Total bruto: <b id="ts">${moeda(total())}</b>
+        <div class="peq" id="cs" style="color:var(--alerta)"></div></div>
       <button class="btn acento" id="pagar" ${marcados.size ? '' : 'disabled'}>Registrar pagamento</button></div>` : ''}`;
   const atualizar = () => {
     alvo.querySelector('#qs').textContent = marcados.size; alvo.querySelector('#ts').textContent = moeda(total());
+    const emCons = lista.filter(r => marcados.has(r.id) && r.conserto_status === 'Em conserto').reduce((a, r) => a + r.conserto_qtd, 0);
+    alvo.querySelector('#cs').textContent = emCons ? `Atenção: ${emCons} peça(s) destes retornos ainda estão em conserto na facção.` : '';
     alvo.querySelector('#pagar').disabled = !marcados.size;
   };
   alvo.querySelectorAll('[data-m]').forEach(cb => cb.onchange = () => { cb.checked ? marcados.add(cb.dataset.m) : marcados.delete(cb.dataset.m); atualizar(); });
@@ -83,6 +87,10 @@ function pagar(itens, depois) {
   modal({
     titulo: `Pagamento — ${itens[0].faccao}`,
     corpo: `<p>${itens.length} retorno(s) · valor bruto <b>${moeda(bruto)}</b></p>
+      ${(() => { const c = itens.filter(r => r.conserto_qtd > 0); if (!c.length) return '';
+        const pend = c.filter(r => r.conserto_status === 'Em conserto').reduce((a, r) => a + r.conserto_qtd, 0);
+        const rec = c.filter(r => r.conserto_status === 'Conserto recebido').reduce((a, r) => a + r.conserto_qtd, 0);
+        return `<div class="aviso-box">Consertos nestes retornos: ${pend ? `<b>${pend} peça(s) ainda em conserto</b>` : ''}${pend && rec ? ' · ' : ''}${rec ? `${rec} peça(s) de conserto já recebidas` : ''}.</div>`; })()}
       <div class="grade g2">
         <label class="campo">Data do pagamento<input type="date" id="dp" value="${hojeISO()}"></label>
         <label class="campo">Desconto (R$)<input type="number" id="ds" min="0" step="0.01" value="0"></label>
@@ -114,9 +122,17 @@ async function detalhes(p) {
     titulo: `${p.codigo} — ${p.faccao}`, largo: true,
     corpo: `<p>Pago em ${data(p.data_pagamento)} por ${h(p.responsavel)} · bruto ${moeda(p.valor_bruto)} · desconto ${moeda(p.desconto)} · <b>pago ${moeda(p.valor_pago)}</b></p>
       ${p.obs ? `<p>Obs.: ${h(p.obs)}</p>` : ''}
-      <div class="tabela-wrap"><table><thead><tr><th>Lote</th><th>Produto</th><th>Cor/Tam</th><th class="n">Cima</th><th class="n">Baixo</th><th class="n">Defeito</th><th class="n">Bruto</th><th class="n">Pago</th></tr></thead>
+      <div class="tabela-wrap"><table><thead><tr><th>Lote</th><th>Produto</th><th>Cor/Tam</th><th class="n">Cima</th><th class="n">Baixo</th><th class="n">Defeito</th><th>Conserto</th><th class="n">Bruto</th><th class="n">Pago</th></tr></thead>
       <tbody>${itens.map(r => `<tr><td>${h(r.lote)}</td><td>${h(r.produto)}</td><td>${h(r.cor || '')} / ${h(r.tamanho || '')}</td><td class="n">${r.ret_cima}</td><td class="n">${r.ret_baixo}</td>
-        <td class="n">${r.def_cima + r.def_baixo}</td><td class="n">${moeda(r.valor_a_pagar)}</td><td class="n">${moeda(r.valor_pago)}</td></tr>`).join('')}</tbody></table></div>`,
+        <td class="n">${r.def_cima + r.def_baixo}</td><td>${conserto(r)}</td><td class="n">${moeda(r.valor_a_pagar)}</td><td class="n">${moeda(r.valor_pago)}</td></tr>`).join('')}</tbody></table></div>`,
     botoes: [{ texto: 'Fechar' }]
   });
+}
+
+// Conserto do retorno: quantidade + situação (em conserto / recebido)
+function conserto(r) {
+  if (!r.conserto_qtd) return '<span class="muted">—</span>';
+  return r.conserto_status === 'Em conserto'
+    ? chip(`${r.conserto_qtd} em conserto`, 'alerta')
+    : chip(`${r.conserto_qtd} recebido${r.conserto_recebido_em ? ' ' + data(r.conserto_recebido_em) : ''}`, 'ok');
 }

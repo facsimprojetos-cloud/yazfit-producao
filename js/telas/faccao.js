@@ -21,6 +21,10 @@ export async function render(el) {
     q = aba === 'aberto' ? q.is('data_retorno', null) : q.not('data_retorno', 'is', null).order('data_retorno', { ascending: false });
     lista = await ler(q);
   }
+  // consertos por envio
+  const consertos = new Map();
+  if (aba !== 'conferir') (await ler(db.from('v_envios_consertos').select('*'))).forEach(c => consertos.set(c.envio_id, c));
+  lista.forEach(x => { const c = consertos.get(x.id); x.em_conserto = c?.em_conserto || 0; x.conserto_recebido = c?.conserto_recebido || 0; });
   const filtrada = lista.filter(x => (!fFac || String(x.faccao_id) === fFac) && (!fAtraso || x.atraso === fAtraso)
     && (!fProd || x.produto === fProd) && (!fCor || x.cor === fCor) && (!fTam || x.tamanho === fTam)
     && (!busca || [x.lote, x.sublote, x.produto, x.cor, x.faccao].join(' ').toLowerCase().includes(busca.toLowerCase())));
@@ -61,6 +65,7 @@ export async function render(el) {
       <div class="linha1"><div><div class="tit">${h(r.faccao)}</div><div class="det">${h(r.produto)} · ${h(r.cor || '')} · ${h(r.tamanho || '')}</div><div class="det">Lote ${h(r.lote)} · retorno ${data(r.data_retorno)}</div></div>${chip('A conferir', 'alerta')}</div>
       <div class="det" style="margin-top:8px">Cima: <b>${r.ret_cima}</b> (def. ${r.def_cima}, cons. ${r.cons_cima}) · Baixo: <b>${r.ret_baixo}</b> (def. ${r.def_baixo}, cons. ${r.cons_baixo})</div>
       <div class="det">Valor calculado: <b>${moeda(r.valor_a_pagar)}</b></div>
+      ${r.conserto_qtd ? `<div class="det">Conserto: ${chip(`${r.conserto_qtd} ${r.conserto_status === 'Em conserto' ? 'em conserto' : 'recebido(s)'}`, r.conserto_status === 'Em conserto' ? 'alerta' : 'ok')}</div>` : ''}
       <div class="acoes" style="margin-top:10px">${pode ? `<button class="btn pri peq" data-conf="${r.id}">Conferir</button>` : ''}
         ${sup ? `<button class="btn peq perigo" data-exret="${r.id}">🗑 Excluir</button>` : ''}</div>
     </div>`).join('') || '<div class="vazio">Nenhum retorno aguardando conferência.</div>'}</div>`;
@@ -105,6 +110,8 @@ function cartao(e, pode, sup) {
     <div class="nums"><div><b>${num(e.qtd)}</b><span>Enviado</span></div><div><b style="color:var(--ok)">${num(e.retornado)}</b><span>Retornado</span></div><div><b style="color:var(--alerta)">${num(e.saldo)}</b><span>Pendente</span></div></div>
     <div class="det">Envio ${data(e.data_envio)} · Previsão <b>${data(e.previsao)}</b>${e.dias_atraso > 0 ? ` · <span style="color:var(--erro)">${e.dias_atraso} dia(s) de atraso</span>` : ''}</div>
     ${e.classificacao === 'Conjunto' ? `<div class="det">Retorno cima/baixo: ${e.ret_cima} / ${e.ret_baixo}</div>` : ''}
+    ${e.def_cima + e.def_baixo ? `<div class="det">Defeito: <b>${e.def_cima + e.def_baixo}</b> peça(s)</div>` : ''}
+    ${e.em_conserto || e.conserto_recebido ? `<div class="det">Conserto: ${e.em_conserto ? chip(`${e.em_conserto} em conserto`, 'alerta') : ''} ${e.conserto_recebido ? chip(`${e.conserto_recebido} recebido(s)`, 'ok') : ''}</div>` : ''}
     <div class="det">Valor: ${moeda(e.valor_total)}</div>
     ${e.ocorrencia ? `<div class="aviso-box">Ocorrência: ${h(e.ocorrencia)}</div>` : ''}
     <div class="acoes" style="margin-top:10px">
@@ -184,7 +191,7 @@ async function historico(e, depois) {
     titulo: `Retornos — ${e.produto} (${e.faccao})`, largo: true,
     corpo: `<div class="tabela-wrap"><table><thead><tr><th>Retorno</th><th>Conferência</th><th class="n">Cima</th><th class="n">Baixo</th><th class="n">Defeito</th><th class="n">Conserto</th><th class="n">Valor</th><th>Situação</th><th></th></tr></thead>
       <tbody>${rets.map(r => `<tr><td>${data(r.data_retorno)}</td><td>${data(r.data_conferencia) || '—'}</td><td class="n">${r.ret_cima}</td><td class="n">${r.ret_baixo}</td>
-        <td class="n">${r.def_cima + r.def_baixo}</td><td class="n">${r.cons_cima + r.cons_baixo}</td><td class="n">${moeda(r.valor_a_pagar)}</td>
+        <td class="n">${r.def_cima + r.def_baixo}</td><td class="n">${r.conserto_qtd ? chip(`${r.conserto_qtd} ${r.conserto_status === 'Em conserto' ? 'em conserto' : 'recebido'}`, r.conserto_status === 'Em conserto' ? 'alerta' : 'ok') : '—'}</td><td class="n">${moeda(r.valor_a_pagar)}</td>
         <td>${chip(r.situacao, r.situacao === 'PAGO' ? 'ok' : r.situacao === 'ABERTO' ? 'info' : 'alerta')}</td>
         <td>${r.situacao !== 'PAGO' ? `<div class="acoes">${pode ? `<button class="btn peq" data-edr="${r.id}">Editar</button>` : ''}${sup ? `<button class="btn peq perigo" data-exr="${r.id}">🗑</button>` : ''}</div>` : ''}</td></tr>`).join('')}</tbody></table></div>
       <p class="muted peq">Retorno pago só pode ser alterado depois de estornar o pagamento em Fechamento.</p>`,
