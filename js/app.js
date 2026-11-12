@@ -1,5 +1,7 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 import { SUPABASE_URL, SUPABASE_KEY, SCHEMA, EMPRESA } from './config.js';
+// Versão publicada: muda a cada atualização para o navegador não usar telas antigas do cache
+const VERSAO = '202611120958'; // atualizar a cada publicação
 import { h, toast } from './util.js';
 
 export const db = createClient(SUPABASE_URL, SUPABASE_KEY, {
@@ -33,7 +35,7 @@ const ROTAS = [
 
 const cacheModulos = {};
 async function carregarModulo(nome) {
-  if (!cacheModulos[nome]) cacheModulos[nome] = await import(`./telas/${nome}.js`);
+  if (!cacheModulos[nome]) cacheModulos[nome] = await import(`./telas/${nome}.js?v=${VERSAO}`);
   return cacheModulos[nome];
 }
 
