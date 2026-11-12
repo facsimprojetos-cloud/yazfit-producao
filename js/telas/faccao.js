@@ -146,7 +146,7 @@ async function formRetorno(envio, ret, depois) {
           <label class="campo">Data do retorno<input type="date" name="data_retorno" value="${v.data_retorno || ''}" required></label>
           <label class="campo">Data da conferência<input type="date" name="data_conferencia" value="${v.data_conferencia || ''}"></label>
         </div>
-        <p class="muted peq">Sem data de conferência o retorno fica "A conferir" e não entra no pagamento. Defeito é descontado do valor; conserto gera uma pendência em Consertos.</p>
+        <p class="muted peq">Sem data de conferência o retorno fica "A conferir" e não entra no pagamento. Defeito não é pago. Conserto vai para a aba Consertos e só é pago quando voltar consertado.</p>
         <label class="campo">Observações / consertos<input name="obs" value="${h(v.obs || '')}"></label>
       </form>`,
     botoes: [{ texto: 'Cancelar' }, {

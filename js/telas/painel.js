@@ -31,6 +31,7 @@ export async function render(el) {
     ler(db.from('v_calandra_estoque').select('saldo,em_operacao')),
     ler(db.from('v_fechamentos').select('faccao,data_pagamento,valor_pago')),
   ]);
+  const consAPagar = await ler(db.from('v_consertos').select('faccao,valor,data_recebido').eq('situacao_pagamento', 'ABERTO'));
   const c = (s) => cortes.filter(x => x.status === s).length;
   const disp = sublotes.filter(s => s.disponivel_envio);
   const atrasados = envios.filter(e => e.atraso === 'Atrasado');
@@ -51,6 +52,7 @@ export async function render(el) {
   const porFac = new Map();
   const add = (fac, campo, v) => { const x = porFac.get(fac) || { aPagar: 0, conferido: 0, previsto: 0, vencido: 0, pago: 0 }; x[campo] += v; porFac.set(fac, x); };
   aPagar.forEach(r => add(r.faccao, 'aPagar', Number(r.valor_a_pagar)));
+  consAPagar.forEach(c => add(c.faccao, 'aPagar', Number(c.valor)));
   conferidoNoPeriodo.forEach(r => add(r.faccao, 'conferido', Number(r.valor_a_pagar)));
   previstoNoPeriodo.forEach(e => add(e.faccao, 'previsto', valorEnvio(e)));
   vencidoAntes.forEach(e => add(e.faccao, 'vencido', valorEnvio(e)));
@@ -84,8 +86,8 @@ export async function render(el) {
       <label class="campo">Até<input type="date" id="ate" value="${fim}"></label></div>` : ''}
     <p class="muted peq" style="margin-top:0">${h(rotulo)}: ${data(ini)} a ${data(fim)}</p>
     <div class="grade g4" style="margin-bottom:12px">
-      <a class="kpi ok" href="#/fechamento"><div class="rot">A pagar hoje (conferido)</div><div class="val" style="font-size:1.4rem">${moeda(soma(aPagar, r => Number(r.valor_a_pagar)))}</div>
-        <div class="peq muted">${num(aPagar.length)} retorno(s) · ${num(aConferir.length)} a conferir</div></a>
+      <a class="kpi ok" href="#/fechamento"><div class="rot">A pagar hoje (conferido)</div><div class="val" style="font-size:1.4rem">${moeda(soma(aPagar, r => Number(r.valor_a_pagar)) + soma(consAPagar, c => Number(c.valor)))}</div>
+        <div class="peq muted">${num(aPagar.length)} retorno(s) · ${num(consAPagar.length)} conserto(s) · ${num(aConferir.length)} a conferir</div></a>
       <a class="kpi" href="#/faccao"><div class="rot">Previsto no período</div><div class="val" style="font-size:1.4rem">${moeda(soma(previstoNoPeriodo, valorEnvio))}</div>
         <div class="peq muted">${num(soma(previstoNoPeriodo, e => e.saldo))} peças com retorno previsto</div></a>
       <a class="kpi erro" href="#/faccao"><div class="rot">Previsto já vencido</div><div class="val" style="font-size:1.4rem">${moeda(soma(vencidoAntes, valorEnvio))}</div>

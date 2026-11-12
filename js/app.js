@@ -1,7 +1,7 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 import { SUPABASE_URL, SUPABASE_KEY, SCHEMA, EMPRESA } from './config.js';
 // Versão publicada: muda a cada atualização para o navegador não usar telas antigas do cache
-const VERSAO = '202611120958'; // atualizar a cada publicação
+const VERSAO = '202611121339'; // atualizar a cada publicação
 import { h, toast } from './util.js';
 
 export const db = createClient(SUPABASE_URL, SUPABASE_KEY, {
