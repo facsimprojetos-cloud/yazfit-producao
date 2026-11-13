@@ -1,8 +1,11 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 import { SUPABASE_URL, SUPABASE_KEY, SCHEMA, EMPRESA } from './config.js';
 // Versão publicada: muda a cada atualização para o navegador não usar telas antigas do cache
-const VERSAO = '202611121339'; // atualizar a cada publicação
-import { h, toast } from './util.js';
+const VERSAO = '202611122145'; // atualizar a cada publicação
+import { h, toast, modal } from './util.js';
+
+// Chegou pelo link de "Esqueci minha senha" do e-mail?
+let recuperandoSenha = /type=recovery/.test(location.hash);
 
 export const db = createClient(SUPABASE_URL, SUPABASE_KEY, {
   db: { schema: SCHEMA },
@@ -53,11 +56,15 @@ function montarLayout() {
         <div class="usuario-box">
           <div class="nome">${h(ctx.nome)}</div>
           <div class="muted peq">${h(ctx.perfis.join(', '))}</div>
-          <button class="btn peq" id="sair">Sair</button>
+          <div class="acoes" style="display:flex;gap:6px;flex-wrap:wrap">
+            <button class="btn peq" id="minha-senha">Minha senha</button>
+            <button class="btn peq" id="sair">Sair</button>
+          </div>
         </div>
       </aside>
       <main class="conteudo" id="conteudo"></main>
     </div>`;
+  document.getElementById('minha-senha').onclick = trocarMinhaSenha;
   document.getElementById('sair').onclick = async () => { await db.auth.signOut(); location.hash = ''; location.reload(); };
   const lateral = document.getElementById('lateral');
   document.getElementById('abre-menu').onclick = () => {
@@ -106,6 +113,7 @@ function telaLogin(msg = '', tipo = 'erro') {
         <button class="btn" type="button" id="criar">Criar conta</button>
         <button class="btn peq" type="button" id="esqueci" style="border:0">Esqueci minha senha</button>
       </form>
+      <p class="muted peq" style="margin-top:10px">Esqueceu a senha? Digite o e-mail e toque em "Esqueci minha senha" para receber um link. Se o e-mail não chegar, peça ao administrador para redefinir sua senha.</p>
     </div></div>`;
   const f = document.getElementById('f-login');
   f.onsubmit = async (ev) => {
@@ -125,7 +133,7 @@ function telaLogin(msg = '', tipo = 'erro') {
     const { email } = Object.fromEntries(new FormData(f));
     if (!email) return telaLogin('Digite seu e-mail para receber o link de redefinição.');
     const { error } = await db.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
-    telaLogin(error ? traduzErroAuth(error.message) : 'Se o e-mail existir, enviamos um link de redefinição.', error ? 'erro' : 'ok');
+    telaLogin(error ? traduzErroAuth(error.message) : 'Se o e-mail estiver cadastrado, enviamos um link para criar uma nova senha. Veja também a caixa de spam.', error ? 'erro' : 'ok');
   };
 }
 
@@ -134,7 +142,68 @@ function traduzErroAuth(m) {
   if (/Email not confirmed/i.test(m)) return 'Confirme seu e-mail pelo link recebido antes de entrar.';
   if (/already registered/i.test(m)) return 'Este e-mail já tem conta. Use "Entrar".';
   if (/Password should be/i.test(m)) return 'A senha precisa ter pelo menos 6 caracteres.';
+  if (/should be different/i.test(m)) return 'A nova senha precisa ser diferente da atual.';
+  if (/rate limit|security purposes/i.test(m)) return 'Muitas tentativas. Aguarde alguns minutos e tente de novo.';
   return m;
+}
+
+// ---------- Senha ----------
+const CAMPOS_NOVA_SENHA = `
+  <label class="campo">Nova senha<input type="password" name="nova" required minlength="6" autocomplete="new-password"></label>
+  <label class="campo">Repita a nova senha<input type="password" name="repete" required minlength="6" autocomplete="new-password"></label>`;
+
+function validarNova(f) {
+  const nova = f.nova.value, repete = f.repete.value;
+  if (nova.length < 6) return 'A senha precisa ter pelo menos 6 caracteres.';
+  if (nova !== repete) return 'As duas senhas não são iguais.';
+  return '';
+}
+
+// Tela aberta pelo link do e-mail "Esqueci minha senha"
+function telaNovaSenha(msg = '') {
+  const app = document.getElementById('app');
+  app.innerHTML = `
+    <div class="login"><div class="card">
+      <div class="marca-login">${h(EMPRESA)}</div>
+      <div class="sub">Criar nova senha</div>
+      ${msg ? `<div class="erro-box">${h(msg)}</div>` : ''}
+      <form id="f-nova" class="grade">${CAMPOS_NOVA_SENHA}
+        <button class="btn pri" type="submit">Salvar nova senha</button>
+      </form>
+    </div></div>`;
+  const f = document.getElementById('f-nova');
+  f.onsubmit = async (ev) => {
+    ev.preventDefault();
+    const erro = validarNova(f); if (erro) return telaNovaSenha(erro);
+    const { error } = await db.auth.updateUser({ password: f.nova.value });
+    if (error) return telaNovaSenha(traduzErroAuth(error.message));
+    recuperandoSenha = false;
+    if (location.hash.includes('type=recovery')) history.replaceState(null, '', location.pathname);
+    toast('Senha alterada. Bem-vindo(a)!', 'ok');
+    iniciar();
+  };
+}
+
+// Botão "Minha senha" no menu
+function trocarMinhaSenha() {
+  modal({
+    titulo: 'Alterar minha senha',
+    corpo: `<form id="f-senha" class="grade">
+      <label class="campo">Senha atual<input type="password" name="atual" required autocomplete="current-password"></label>
+      ${CAMPOS_NOVA_SENHA}
+    </form>`,
+    botoes: [{ texto: 'Cancelar' }, {
+      texto: 'Salvar', classe: 'pri', acao: async (m) => {
+        const f = m.querySelector('#f-senha'); if (!f.reportValidity()) return false;
+        const erro = validarNova(f); if (erro) { toast(erro, 'erro'); return false; }
+        const conf = await db.auth.signInWithPassword({ email: ctx.email, password: f.atual.value });
+        if (conf.error) { toast('Senha atual incorreta.', 'erro'); return false; }
+        const { error } = await db.auth.updateUser({ password: f.nova.value });
+        if (error) { toast(traduzErroAuth(error.message), 'erro'); return false; }
+        toast('Senha alterada.', 'ok');
+      }
+    }]
+  });
 }
 
 function telaSemAcesso(status, email) {
@@ -173,6 +242,7 @@ async function iniciar() {
 async function iniciarSessao() {
   const { data: { session } } = await db.auth.getSession();
   if (!session) return telaLogin();
+  if (recuperandoSenha) return telaNovaSenha();
   const { data: status, error } = await db.rpc('status_sistema');
   if (error) {
     const msg = /schema must be one of|Invalid schema/i.test(error.message)
@@ -191,11 +261,8 @@ async function iniciarSessao() {
 }
 
 db.auth.onAuthStateChange((evento) => {
-  if (evento === 'SIGNED_IN' && !ctx.usuario) iniciar();
-  if (evento === 'PASSWORD_RECOVERY') {
-    const nova = prompt('Digite a nova senha (mínimo 6 caracteres):');
-    if (nova) db.auth.updateUser({ password: nova }).then(({ error }) => toast(error ? error.message : 'Senha alterada.', error ? 'erro' : 'ok'));
-  }
+  if (evento === 'PASSWORD_RECOVERY') { recuperandoSenha = true; return telaNovaSenha(); }
+  if (evento === 'SIGNED_IN' && !ctx.usuario && !recuperandoSenha) iniciar();
 });
 
 iniciar();
